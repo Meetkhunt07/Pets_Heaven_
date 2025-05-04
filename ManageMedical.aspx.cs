@@ -1,0 +1,124 @@
+﻿using System;
+using System.Configuration;
+using System.Data;
+using System.Data.SqlClient;
+using System.IO;
+using System.Web.UI.WebControls;
+
+namespace Pets_Heaven_
+{
+    public partial class ManageMedical : System.Web.UI.Page
+    {
+        string conStr = ConfigurationManager.ConnectionStrings["PetsHeavenConn"].ConnectionString;
+
+        protected void Page_Load(object sender, EventArgs e)
+        {
+            if (Session["UserID"] == null)
+                Response.Redirect("Login.aspx");
+
+            if (!IsPostBack)
+                LoadMedicalProducts();
+        }
+
+        private void LoadMedicalProducts(string search = "")
+        {
+            using (SqlConnection con = new SqlConnection(conStr))
+            {
+                string query = "SELECT * FROM Products WHERE CategoryID = 4";
+                if (!string.IsNullOrEmpty(search))
+                    query += " AND ProductName LIKE @search";
+
+                SqlCommand cmd = new SqlCommand(query, con);
+                if (!string.IsNullOrEmpty(search))
+                    cmd.Parameters.AddWithValue("@search", "%" + search + "%");
+
+                SqlDataAdapter da = new SqlDataAdapter(cmd);
+                DataTable dt = new DataTable();
+                da.Fill(dt);
+                gvMedical.DataSource = dt;
+                gvMedical.DataBind();
+            }
+        }
+
+        protected void btnSearch_Click(object sender, EventArgs e)
+        {
+            LoadMedicalProducts(txtSearch.Text.Trim());
+        }
+
+        protected void gvMedical_RowEditing(object sender, GridViewEditEventArgs e)
+        {
+            gvMedical.EditIndex = e.NewEditIndex;
+            LoadMedicalProducts(txtSearch.Text.Trim());
+        }
+
+        protected void gvMedical_RowCancelingEdit(object sender, GridViewCancelEditEventArgs e)
+        {
+            gvMedical.EditIndex = -1;
+            LoadMedicalProducts(txtSearch.Text.Trim());
+        }
+
+        protected void gvMedical_RowUpdating(object sender, GridViewUpdateEventArgs e)
+        {
+            GridViewRow row = gvMedical.Rows[e.RowIndex];
+            int productId = Convert.ToInt32(gvMedical.DataKeys[e.RowIndex].Value);
+            string name = ((TextBox)row.Cells[1].Controls[0]).Text;
+            string description = ((TextBox)row.Cells[2].Controls[0]).Text;
+            decimal price = Convert.ToDecimal(((TextBox)row.Cells[3].Controls[0]).Text);
+            int stock = Convert.ToInt32(((TextBox)row.Cells[4].Controls[0]).Text);
+
+            FileUpload fuImage = (FileUpload)row.FindControl("fuImage");
+            HiddenField hdnOldImage = (HiddenField)row.FindControl("hdnOldImage");
+            string imageUrl = hdnOldImage.Value;
+
+            if (fuImage.HasFile)
+            {
+                string folder = Server.MapPath("~/Images/Medical/");
+                if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+
+                string fileName = Path.GetFileName(fuImage.FileName);
+                string filePath = Path.Combine(folder, fileName);
+                fuImage.SaveAs(filePath);
+                imageUrl = "Images/Medical/" + fileName;
+            }
+
+            using (SqlConnection con = new SqlConnection(conStr))
+            {
+                SqlCommand cmd = new SqlCommand(@"UPDATE Products SET 
+                    ProductName=@name, Description=@desc, Price=@price, 
+                    StockQuantity=@stock, ImageURL=@img WHERE ProductID=@id", con);
+
+                cmd.Parameters.AddWithValue("@name", name);
+                cmd.Parameters.AddWithValue("@desc", description);
+                cmd.Parameters.AddWithValue("@price", price);
+                cmd.Parameters.AddWithValue("@stock", stock);
+                cmd.Parameters.AddWithValue("@img", imageUrl);
+                cmd.Parameters.AddWithValue("@id", productId);
+
+                con.Open();
+                cmd.ExecuteNonQuery();
+                con.Close();
+            }
+
+            gvMedical.EditIndex = -1;
+            LoadMedicalProducts(txtSearch.Text.Trim());
+            litScript.Text = "<script>Swal.fire('Updated!','Medical product updated successfully.','success');</script>";
+        }
+
+        protected void gvMedical_RowDeleting(object sender, GridViewDeleteEventArgs e)
+        {
+            int productId = Convert.ToInt32(gvMedical.DataKeys[e.RowIndex].Value);
+
+            using (SqlConnection con = new SqlConnection(conStr))
+            {
+                SqlCommand cmd = new SqlCommand("DELETE FROM Products WHERE ProductID=@id", con);
+                cmd.Parameters.AddWithValue("@id", productId);
+                con.Open();
+                cmd.ExecuteNonQuery();
+                con.Close();
+            }
+
+            LoadMedicalProducts(txtSearch.Text.Trim());
+            litScript.Text = "<script>Swal.fire('Deleted!','Medical product deleted successfully.','success');</script>";
+        }
+    }
+}
